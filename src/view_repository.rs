@@ -3,40 +3,40 @@ use std::marker::PhantomData;
 use async_trait::async_trait;
 use cqrs_es::persist::{PersistenceError, ViewContext, ViewRepository};
 use cqrs_es::{Aggregate, View};
-use sqlx::mysql::MySqlRow;
-use sqlx::{MySql, Pool, Row};
+use sqlx::sqlite::SqliteRow;
+use sqlx::{Sqlite, Pool, Row};
 
-use crate::error::MysqlAggregateError;
+use crate::error::SqliteAggregateError;
 
-/// A mysql backed query repository for use in backing a `GenericQuery`.
-pub struct MysqlViewRepository<V, A> {
+/// A SQLite backed query repository for use in backing a `GenericQuery`.
+pub struct SqliteViewRepository<V, A> {
     insert_sql: String,
     update_sql: String,
     select_sql: String,
-    pool: Pool<MySql>,
+    pool: Pool<Sqlite>,
     _phantom: PhantomData<(V, A)>,
 }
 
-impl<V, A> MysqlViewRepository<V, A>
+impl<V, A> SqliteViewRepository<V, A>
 where
     V: View<A>,
     A: Aggregate,
 {
-    /// Creates a new `MysqlViewRepository` that will store serialized views in a MySql table named
+    /// Creates a new `SqliteViewRepository` that will store serialized views in a SQLite table named
     /// identically to the `view_name` value provided. This table should be created by the user
     /// before using this query repository (see `/db/init.sql` sql initialization file).
     ///
     /// ```
     /// # use cqrs_es::doc::MyAggregate;
     /// # use cqrs_es::persist::doc::MyView;
-    /// use sqlx::{MySql, Pool};
-    /// use mysql_es::MysqlViewRepository;
+    /// use sqlx::{Sqlite, Pool};
+    /// use sqlite_es::SqliteViewRepository;
     ///
-    /// fn configure_view_repo(pool: Pool<MySql>) -> MysqlViewRepository<MyView,MyAggregate> {
-    ///     MysqlViewRepository::new("my_view_table", pool)
+    /// fn configure_view_repo(pool: Pool<Sqlite>) -> SqliteViewRepository<MyView,MyAggregate> {
+    ///     SqliteViewRepository::new("my_view_table", pool)
     /// }
     /// ```
-    pub fn new(view_name: &str, pool: Pool<MySql>) -> Self {
+    pub fn new(view_name: &str, pool: Pool<Sqlite>) -> Self {
         let insert_sql = format!(
             "INSERT INTO {} (payload, version, view_id) VALUES ( ?, ?, ? )",
             view_name
@@ -57,17 +57,17 @@ where
 }
 
 #[async_trait]
-impl<V, A> ViewRepository<V, A> for MysqlViewRepository<V, A>
+impl<V, A> ViewRepository<V, A> for SqliteViewRepository<V, A>
 where
     V: View<A>,
     A: Aggregate,
 {
     async fn load(&self, view_id: &str) -> Result<Option<V>, PersistenceError> {
-        let row: Option<MySqlRow> = sqlx::query(&self.select_sql)
+        let row: Option<SqliteRow> = sqlx::query(&self.select_sql)
             .bind(&view_id)
             .fetch_optional(&self.pool)
             .await
-            .map_err(MysqlAggregateError::from)?;
+            .map_err(SqliteAggregateError::from)?;
         match row {
             None => Ok(None),
             Some(row) => {
@@ -81,11 +81,11 @@ where
         &self,
         view_id: &str,
     ) -> Result<Option<(V, ViewContext)>, PersistenceError> {
-        let row: Option<MySqlRow> = sqlx::query(&self.select_sql)
+        let row: Option<SqliteRow> = sqlx::query(&self.select_sql)
             .bind(&view_id)
             .fetch_optional(&self.pool)
             .await
-            .map_err(MysqlAggregateError::from)?;
+            .map_err(SqliteAggregateError::from)?;
         match row {
             None => Ok(None),
             Some(row) => {
@@ -103,14 +103,14 @@ where
             _ => &self.update_sql,
         };
         let version = context.version + 1;
-        let payload = serde_json::to_value(&view).map_err(MysqlAggregateError::from)?;
+        let payload = serde_json::to_value(&view).map_err(SqliteAggregateError::from)?;
         sqlx::query(sql.as_str())
             .bind(payload)
             .bind(&version)
             .bind(context.view_instance_id)
             .execute(&self.pool)
             .await
-            .map_err(MysqlAggregateError::from)?;
+            .map_err(SqliteAggregateError::from)?;
         Ok(())
     }
 }
@@ -120,13 +120,13 @@ mod test {
     use crate::testing::tests::{
         Created, TestAggregate, TestEvent, TestView, TEST_CONNECTION_STRING,
     };
-    use crate::{default_mysql_pool, MysqlViewRepository};
+    use crate::{default_sqlite_pool, SqliteViewRepository};
     use cqrs_es::persist::{ViewContext, ViewRepository};
 
     #[tokio::test]
     async fn test_valid_view_repository() {
-        let pool = default_mysql_pool(TEST_CONNECTION_STRING).await;
-        let repo = MysqlViewRepository::<TestView, TestAggregate>::new("test_view", pool.clone());
+        let pool = default_sqlite_pool(TEST_CONNECTION_STRING).await;
+        let repo = SqliteViewRepository::<TestView, TestAggregate>::new("test_view", pool.clone());
         let test_view_id = uuid::Uuid::new_v4().to_string();
 
         let view = TestView {

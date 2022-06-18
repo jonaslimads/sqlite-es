@@ -7,7 +7,7 @@ pub(crate) mod tests {
     use serde_json::Value;
     use std::fmt::{Display, Formatter};
 
-    use crate::view_repository::MysqlViewRepository;
+    use crate::view_repository::SqliteViewRepository;
 
     #[derive(Debug, Serialize, Deserialize, PartialEq)]
     pub struct TestAggregate {
@@ -100,7 +100,7 @@ pub(crate) mod tests {
     pub enum TestCommand {}
 
     pub(crate) type TestQueryRepository =
-        GenericQuery<MysqlViewRepository<TestView, TestAggregate>, TestView, TestAggregate>;
+        GenericQuery<SqliteViewRepository<TestView, TestAggregate>, TestView, TestAggregate>;
 
     #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
     pub(crate) struct TestView {
@@ -114,7 +114,7 @@ pub(crate) mod tests {
     }
 
     pub(crate) const TEST_CONNECTION_STRING: &str =
-        "mysql://test_user:test_pass@127.0.0.1:3306/test";
+        "sqlite://test.db";
 
     pub(crate) fn test_event_envelope(
         id: &str,

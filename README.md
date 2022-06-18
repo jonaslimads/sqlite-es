@@ -1,6 +1,6 @@
-# mysql-es
+# sqlite-es
 
-> A MySql implementation of the `PersistedEventRepository` trait in cqrs-es.
+> A SQLite implementation of the `PersistedEventRepository` trait in cqrs-es.
 
 ---
 
@@ -10,17 +10,17 @@ Add to your Cargo.toml file:
 ```toml
 [dependencies]
 cqrs-es = "0.4.3"
-mysql-es = "0.4.3"
+sqlite-es = "0.4.3"
 ```
 
-Requires access to a MySql DB with existing tables. See:
+Requires access to a SQLite DB with existing tables. See:
 - [Sample database configuration](db/init.sql)
 - Use `docker-compose` to quickly setup [a local database](docker-compose.yml)
 
 A simple configuration example:
 ```
-let store = default_mysql_pool("mysql://my_user:my_pass@localhost:3306/my_db");
-let cqrs = mysql_es::mysql_cqrs(pool, vec![])
+let store = default_sqlite_pool("sqlite://database.db");
+let cqrs = sqlite_es::sqlite_cqrs(pool, vec![])
 ```
 
 Things that could be helpful:

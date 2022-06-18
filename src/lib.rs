@@ -2,9 +2,9 @@
 #![deny(missing_docs)]
 #![deny(clippy::all)]
 // #![warn(clippy::pedantic)]
-//! # mysql-es
+//! # sqlite-es
 //!
-//! > A MySql implementation of the `EventStore` trait in [cqrs-es](https://crates.io/crates/cqrs-es).
+//! > A SQLite implementation of the `EventStore` trait in [cqrs-es](https://crates.io/crates/cqrs-es).
 //!
 pub use crate::cqrs::*;
 pub use crate::event_repository::*;

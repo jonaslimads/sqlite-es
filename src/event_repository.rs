@@ -7,10 +7,10 @@ use cqrs_es::Aggregate;
 use futures::stream::BoxStream;
 use futures::TryStreamExt;
 use serde_json::Value;
-use sqlx::mysql::MySqlRow;
-use sqlx::{MySql, Pool, Row, Transaction};
+use sqlx::sqlite::SqliteRow;
+use sqlx::{Sqlite, Pool, Row, Transaction};
 
-use crate::error::MysqlAggregateError;
+use crate::error::SqliteAggregateError;
 use crate::sql_query::SqlQueryFactory;
 
 const DEFAULT_EVENT_TABLE: &str = "events";
@@ -18,15 +18,15 @@ const DEFAULT_SNAPSHOT_TABLE: &str = "snapshots";
 
 const DEFAULT_STREAMING_CHANNEL_SIZE: usize = 200;
 
-/// An event repository relying on a MySql database for persistence.
-pub struct MysqlEventRepository {
-    pool: Pool<MySql>,
+/// An event repository relying on a SQLite database for persistence.
+pub struct SqliteEventRepository {
+    pool: Pool<Sqlite>,
     query_factory: SqlQueryFactory,
     stream_channel_size: usize,
 }
 
 #[async_trait]
-impl PersistedEventRepository for MysqlEventRepository {
+impl PersistedEventRepository for SqliteEventRepository {
     async fn get_events<A: Aggregate>(
         &self,
         aggregate_id: &str,
@@ -49,12 +49,12 @@ impl PersistedEventRepository for MysqlEventRepository {
         &self,
         aggregate_id: &str,
     ) -> Result<Option<SerializedSnapshot>, PersistenceError> {
-        let row: MySqlRow = match sqlx::query(self.query_factory.select_snapshot())
+        let row: SqliteRow = match sqlx::query(self.query_factory.select_snapshot())
             .bind(A::aggregate_type())
             .bind(&aggregate_id)
             .fetch_optional(&self.pool)
             .await
-            .map_err(MysqlAggregateError::from)?
+            .map_err(SqliteAggregateError::from)?
         {
             Some(row) => row,
             None => {
@@ -113,7 +113,7 @@ fn stream_events(
     query: String,
     aggregate_type: String,
     aggregate_id: String,
-    pool: Pool<MySql>,
+    pool: Pool<Sqlite>,
     channel_size: usize,
 ) -> ReplayStream {
     let (feed, stream) = ReplayStream::new(channel_size);
@@ -129,7 +129,7 @@ fn stream_events(
 fn stream_all_events(
     query: String,
     aggregate_type: String,
-    pool: Pool<MySql>,
+    pool: Pool<Sqlite>,
     channel_size: usize,
 ) -> ReplayStream {
     let (feed, stream) = ReplayStream::new(channel_size);
@@ -143,11 +143,11 @@ fn stream_all_events(
 
 async fn process_rows(
     mut feed: ReplayFeed,
-    mut rows: BoxStream<'_, Result<MySqlRow, sqlx::Error>>,
+    mut rows: BoxStream<'_, Result<SqliteRow, sqlx::Error>>,
 ) {
     while let Some(row) = rows.try_next().await.unwrap() {
         let event_result: Result<SerializedEvent, PersistenceError> =
-            MysqlEventRepository::deser_event(row).map_err(Into::into);
+            SqliteEventRepository::deser_event(row).map_err(Into::into);
         if feed.push(event_result).await.is_err() {
             // TODO: in the unlikely event of a broken channel this error should be reported.
             break;
@@ -155,7 +155,7 @@ async fn process_rows(
     }
 }
 
-impl MysqlEventRepository {
+impl SqliteEventRepository {
     async fn select_events<A: Aggregate>(
         &self,
         aggregate_id: &str,
@@ -166,8 +166,8 @@ impl MysqlEventRepository {
             .bind(aggregate_id)
             .fetch(&self.pool);
         let mut result: Vec<SerializedEvent> = Default::default();
-        while let Some(row) = rows.try_next().await.map_err(MysqlAggregateError::from)? {
-            result.push(MysqlEventRepository::deser_event(row)?);
+        while let Some(row) = rows.try_next().await.map_err(SqliteAggregateError::from)? {
+            result.push(SqliteEventRepository::deser_event(row)?);
         }
         Ok(result)
     }
@@ -184,39 +184,39 @@ impl MysqlEventRepository {
             .bind(sequence as u32)
             .fetch(&self.pool);
         let mut result: Vec<SerializedEvent> = Default::default();
-        while let Some(row) = rows.try_next().await.map_err(MysqlAggregateError::from)? {
-            result.push(MysqlEventRepository::deser_event(row)?);
+        while let Some(row) = rows.try_next().await.map_err(SqliteAggregateError::from)? {
+            result.push(SqliteEventRepository::deser_event(row)?);
         }
         Ok(result)
     }
 }
 
-impl MysqlEventRepository {
-    /// Creates a new `MysqlEventRepository` from the provided database connection
-    /// used for backing a `MysqlSnapshotStore`. This uses the default tables 'events'
+impl SqliteEventRepository {
+    /// Creates a new `SqliteEventRepository` from the provided database connection
+    /// used for backing a `SqliteSnapshotStore`. This uses the default tables 'events'
     /// and 'snapshots'.
     ///
     /// ```
-    /// use sqlx::{MySql, Pool};
-    /// use mysql_es::MysqlEventRepository;
+    /// use sqlx::{Sqlite, Pool};
+    /// use sqlite_es::SqliteEventRepository;
     ///
-    /// fn configure_repo(pool: Pool<MySql>) -> MysqlEventRepository {
-    ///     MysqlEventRepository::new(pool)
+    /// fn configure_repo(pool: Pool<Sqlite>) -> SqliteEventRepository {
+    ///     SqliteEventRepository::new(pool)
     /// }
     /// ```
-    pub fn new(pool: Pool<MySql>) -> Self {
+    pub fn new(pool: Pool<Sqlite>) -> Self {
         Self::use_tables(pool, DEFAULT_EVENT_TABLE, DEFAULT_SNAPSHOT_TABLE)
     }
 
-    /// Configures a `MysqlEventRepository` to use a streaming queue of the provided size.
+    /// Configures a `SqliteEventRepository` to use a streaming queue of the provided size.
     ///
     /// _Example: configure the repository to stream with a 1000 event buffer._
     /// ```
-    /// use sqlx::{MySql, Pool};
-    /// use mysql_es::MysqlEventRepository;
+    /// use sqlx::{Sqlite, Pool};
+    /// use sqlite_es::SqliteEventRepository;
     ///
-    /// fn configure_repo(pool: Pool<MySql>) -> MysqlEventRepository {
-    ///     let store = MysqlEventRepository::new(pool);
+    /// fn configure_repo(pool: Pool<Sqlite>) -> SqliteEventRepository {
+    ///     let store = SqliteEventRepository::new(pool);
     ///     store.with_streaming_channel_size(1000)
     /// }
     /// ```
@@ -237,16 +237,16 @@ impl MysqlEventRepository {
         }
     }
 
-    /// Configures a `MysqlEventRepository` to use the provided table names.
+    /// Configures a `SqliteEventRepository` to use the provided table names.
     ///
     /// _Example: configure the repository to use "my_event_table" and "my_snapshot_table"
     /// for the event and snapshot table names._
     /// ```
-    /// use sqlx::{MySql, Pool};
-    /// use mysql_es::MysqlEventRepository;
+    /// use sqlx::{Sqlite, Pool};
+    /// use sqlite_es::SqliteEventRepository;
     ///
-    /// fn configure_repo(pool: Pool<MySql>) -> MysqlEventRepository {
-    ///     let store = MysqlEventRepository::new(pool);
+    /// fn configure_repo(pool: Pool<Sqlite>) -> SqliteEventRepository {
+    ///     let store = SqliteEventRepository::new(pool);
     ///     store.with_tables("my_event_table", "my_snapshot_table")
     /// }
     /// ```
@@ -254,7 +254,7 @@ impl MysqlEventRepository {
         Self::use_tables(self.pool, events_table, snapshots_table)
     }
 
-    fn use_tables(pool: Pool<MySql>, events_table: &str, snapshots_table: &str) -> Self {
+    fn use_tables(pool: Pool<Sqlite>, events_table: &str, snapshots_table: &str) -> Self {
         Self {
             pool,
             query_factory: SqlQueryFactory::new(events_table, snapshots_table),
@@ -265,8 +265,8 @@ impl MysqlEventRepository {
     pub(crate) async fn insert_events<A: Aggregate>(
         &self,
         events: &[SerializedEvent],
-    ) -> Result<(), MysqlAggregateError> {
-        let mut tx: Transaction<MySql> = sqlx::Acquire::begin(&self.pool).await?;
+    ) -> Result<(), SqliteAggregateError> {
+        let mut tx: Transaction<Sqlite> = sqlx::Acquire::begin(&self.pool).await?;
         self.persist_events::<A>(&mut tx, events).await?;
         tx.commit().await?;
         Ok(())
@@ -278,8 +278,8 @@ impl MysqlEventRepository {
         aggregate_id: String,
         current_snapshot: usize,
         events: &[SerializedEvent],
-    ) -> Result<(), MysqlAggregateError> {
-        let mut tx: Transaction<MySql> = sqlx::Acquire::begin(&self.pool).await?;
+    ) -> Result<(), SqliteAggregateError> {
+        let mut tx: Transaction<Sqlite> = sqlx::Acquire::begin(&self.pool).await?;
         let current_sequence = self.persist_events::<A>(&mut tx, events).await?;
         if A::aggregate_type() == "" {
             sqlx::query(self.query_factory.insert_snapshot())
@@ -309,8 +309,8 @@ impl MysqlEventRepository {
         aggregate_id: String,
         current_snapshot: usize,
         events: &[SerializedEvent],
-    ) -> Result<(), MysqlAggregateError> {
-        let mut tx: Transaction<MySql> = sqlx::Acquire::begin(&self.pool).await?;
+    ) -> Result<(), SqliteAggregateError> {
+        let mut tx: Transaction<Sqlite> = sqlx::Acquire::begin(&self.pool).await?;
         let current_sequence = self.persist_events::<A>(&mut tx, events).await?;
 
         let aggregate_payload = serde_json::to_value(&aggregate)?;
@@ -326,11 +326,11 @@ impl MysqlEventRepository {
         tx.commit().await?;
         match result.rows_affected() {
             1 => Ok(()),
-            _ => Err(MysqlAggregateError::OptimisticLock),
+            _ => Err(SqliteAggregateError::OptimisticLock),
         }
     }
 
-    fn deser_event(row: MySqlRow) -> Result<SerializedEvent, MysqlAggregateError> {
+    fn deser_event(row: SqliteRow) -> Result<SerializedEvent, SqliteAggregateError> {
         let aggregate_type: String = row.get("aggregate_type");
         let aggregate_id: String = row.get("aggregate_id");
         let sequence = {
@@ -352,7 +352,7 @@ impl MysqlEventRepository {
         ))
     }
 
-    fn deser_snapshot(&self, row: MySqlRow) -> Result<SerializedSnapshot, MysqlAggregateError> {
+    fn deser_snapshot(&self, row: SqliteRow) -> Result<SerializedSnapshot, SqliteAggregateError> {
         let aggregate_id = row.get("aggregate_id");
         let s: i64 = row.get("last_sequence");
         let current_sequence = s as usize;
@@ -369,9 +369,9 @@ impl MysqlEventRepository {
 
     pub(crate) async fn persist_events<A: Aggregate>(
         &self,
-        tx: &mut Transaction<'_, MySql>,
+        tx: &mut Transaction<'_, Sqlite>,
         events: &[SerializedEvent],
-    ) -> Result<usize, MysqlAggregateError> {
+    ) -> Result<usize, SqliteAggregateError> {
         let mut current_sequence: usize = 0;
         for event in events {
             current_sequence = event.sequence;
@@ -410,18 +410,18 @@ impl MysqlEventRepository {
 mod test {
     use cqrs_es::persist::PersistedEventRepository;
 
-    use crate::error::MysqlAggregateError;
+    use crate::error::SqliteAggregateError;
     use crate::testing::tests::{
         snapshot_context, test_event_envelope, Created, SomethingElse, TestAggregate, TestEvent,
         Tested, TEST_CONNECTION_STRING,
     };
-    use crate::{default_mysql_pool, MysqlEventRepository};
+    use crate::{default_sqlite_pool, SqliteEventRepository};
 
     #[tokio::test]
     async fn event_repositories() {
-        let pool = default_mysql_pool(TEST_CONNECTION_STRING).await;
+        let pool = default_sqlite_pool(TEST_CONNECTION_STRING).await;
         let id = uuid::Uuid::new_v4().to_string();
-        let event_repo = MysqlEventRepository::new(pool.clone()).with_streaming_channel_size(1);
+        let event_repo = SqliteEventRepository::new(pool.clone()).with_streaming_channel_size(1);
         let events = event_repo.get_events::<TestAggregate>(&id).await.unwrap();
         assert!(events.is_empty());
 
@@ -462,7 +462,7 @@ mod test {
             .await
             .unwrap_err();
         match result {
-            MysqlAggregateError::OptimisticLock => {}
+            SqliteAggregateError::OptimisticLock => {}
             _ => panic!("invalid error result found during insert: {}", result),
         };
 
@@ -472,7 +472,7 @@ mod test {
         verify_replay_stream(&id, event_repo).await;
     }
 
-    async fn verify_replay_stream(id: &str, event_repo: MysqlEventRepository) {
+    async fn verify_replay_stream(id: &str, event_repo: SqliteEventRepository) {
         let mut stream = event_repo
             .stream_events::<TestAggregate>(&id)
             .await
@@ -496,9 +496,9 @@ mod test {
 
     #[tokio::test]
     async fn snapshot_repositories() {
-        let pool = default_mysql_pool(TEST_CONNECTION_STRING).await;
+        let pool = default_sqlite_pool(TEST_CONNECTION_STRING).await;
         let id = uuid::Uuid::new_v4().to_string();
-        let repo = MysqlEventRepository::new(pool.clone());
+        let repo = SqliteEventRepository::new(pool.clone());
         let snapshot = repo.get_snapshot::<TestAggregate>(&id).await.unwrap();
         assert_eq!(None, snapshot);
 
@@ -581,7 +581,7 @@ mod test {
             .await
             .unwrap_err();
         match result {
-            MysqlAggregateError::OptimisticLock => {}
+            SqliteAggregateError::OptimisticLock => {}
             _ => panic!("invalid error result found during insert: {}", result),
         };
 

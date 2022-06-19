@@ -22,8 +22,8 @@ CREATE TABLE snapshots
     CONSTRAINT snapshots_pk PRIMARY KEY (aggregate_type, aggregate_id)
 );
 
--- one view table should be created for every `MysqlViewRepository` used
--- replace name with the value used in `MysqlViewRepository::new(view_name: String)`
+-- one view table should be created for every `SqliteViewRepository` used
+-- replace name with the value used in `SqliteViewRepository::new(view_name: String)`
 CREATE TABLE test_view
 (
     view_id varchar(255)                NOT NULL,

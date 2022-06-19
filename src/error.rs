@@ -31,7 +31,7 @@ impl From<sqlx::Error> for SqliteAggregateError {
         match &err {
             Error::Database(database_error) => {
                 if let Some(code) = database_error.code() {
-                    if code.as_ref() == "23000" {
+                    if code.as_ref() == "1555" {
                         return SqliteAggregateError::OptimisticLock;
                     }
                 }

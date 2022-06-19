@@ -1,3 +1,5 @@
+use std::fs::File;
+
 use cqrs_es::doc::{Customer, CustomerEvent};
 use cqrs_es::persist::{PersistedEventStore, SemanticVersionEventUpcaster};
 use cqrs_es::EventStore;
@@ -6,6 +8,13 @@ use serde_json::Value;
 use sqlx::{Sqlite, Pool};
 
 const TEST_CONNECTION_STRING: &str = "sqlite://test.db";
+
+async fn create_new_db_and_pool() ->  Pool<Sqlite> {
+    let _file = File::create("test.db");
+    let pool = default_sqlite_pool(TEST_CONNECTION_STRING).await;
+    let _result = sqlx::migrate!("./db").run(&pool).await;
+    pool
+}
 
 async fn new_test_event_store(
     pool: Pool<Sqlite>,
@@ -16,7 +25,7 @@ async fn new_test_event_store(
 
 #[tokio::test]
 async fn commit_and_load_events() {
-    let pool = default_sqlite_pool(TEST_CONNECTION_STRING).await;
+    let pool = create_new_db_and_pool().await;
     let repo = SqliteEventRepository::new(pool);
     let event_store = PersistedEventStore::<SqliteEventRepository, Customer>::new_event_store(repo);
 
@@ -25,7 +34,7 @@ async fn commit_and_load_events() {
 
 #[tokio::test]
 async fn commit_and_load_events_snapshot_store() {
-    let pool = default_sqlite_pool(TEST_CONNECTION_STRING).await;
+    let pool = create_new_db_and_pool().await;
     let repo = SqliteEventRepository::new(pool);
     let event_store =
         PersistedEventStore::<SqliteEventRepository, Customer>::new_aggregate_store(repo);
@@ -74,7 +83,7 @@ async fn simple_es_commit_and_load_test(
 
 #[tokio::test]
 async fn upcasted_event() {
-    let pool = default_sqlite_pool(TEST_CONNECTION_STRING).await;
+    let pool = create_new_db_and_pool().await;
     let upcaster = SemanticVersionEventUpcaster::new(
         "NameAdded",
         "1.0.1",

@@ -281,7 +281,7 @@ impl SqliteEventRepository {
     ) -> Result<(), SqliteAggregateError> {
         let mut tx: Transaction<Sqlite> = sqlx::Acquire::begin(&self.pool).await?;
         let current_sequence = self.persist_events::<A>(&mut tx, events).await?;
-        if A::aggregate_type() == "" {
+        if A::aggregate_type() != "" {
             sqlx::query(self.query_factory.insert_snapshot())
                 .bind(A::aggregate_type())
                 .bind(aggregate_id.as_str())
@@ -379,8 +379,9 @@ impl SqliteEventRepository {
             let event_version = &event.event_version;
             let payload = serde_json::to_value(&event.payload)?;
             let metadata = serde_json::to_value(&event.metadata)?;
-            if A::aggregate_type() == "" {
+            if A::aggregate_type() != "" {
                 sqlx::query(self.query_factory.insert_event())
+                    .bind(A::aggregate_type())
                     .bind(event.aggregate_id.as_str())
                     .bind(event.sequence as u32)
                     .bind(event_type)
@@ -391,7 +392,6 @@ impl SqliteEventRepository {
                     .await?;
             } else {
                 sqlx::query(self.query_factory.insert_event())
-                    .bind(A::aggregate_type())
                     .bind(event.aggregate_id.as_str())
                     .bind(event.sequence as u32)
                     .bind(event_type)
@@ -408,7 +408,10 @@ impl SqliteEventRepository {
 
 #[cfg(test)]
 mod test {
+    use std::fs::File;
+
     use cqrs_es::persist::PersistedEventRepository;
+    use sqlx::{Sqlite, Pool};
 
     use crate::error::SqliteAggregateError;
     use crate::testing::tests::{
@@ -417,9 +420,16 @@ mod test {
     };
     use crate::{default_sqlite_pool, SqliteEventRepository};
 
+    async fn create_new_db_and_pool() ->  Pool<Sqlite> {
+        let _file = File::create("test.db");
+        let pool = default_sqlite_pool(TEST_CONNECTION_STRING).await;
+        let _result = sqlx::migrate!("./db").run(&pool).await;
+        pool
+    }
+
     #[tokio::test]
     async fn event_repositories() {
-        let pool = default_sqlite_pool(TEST_CONNECTION_STRING).await;
+        let pool = create_new_db_and_pool().await;
         let id = uuid::Uuid::new_v4().to_string();
         let event_repo = SqliteEventRepository::new(pool.clone()).with_streaming_channel_size(1);
         let events = event_repo.get_events::<TestAggregate>(&id).await.unwrap();
@@ -496,7 +506,7 @@ mod test {
 
     #[tokio::test]
     async fn snapshot_repositories() {
-        let pool = default_sqlite_pool(TEST_CONNECTION_STRING).await;
+        let pool = create_new_db_and_pool().await;
         let id = uuid::Uuid::new_v4().to_string();
         let repo = SqliteEventRepository::new(pool.clone());
         let snapshot = repo.get_snapshot::<TestAggregate>(&id).await.unwrap();

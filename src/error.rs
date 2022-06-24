@@ -5,10 +5,15 @@ use cqrs_es::AggregateError;
 use sqlx::Error;
 
 #[derive(Debug)]
+///
 pub enum SqliteAggregateError {
+    ///
     OptimisticLock,
+    ///
     ConnectionError(Box<dyn std::error::Error + Send + Sync + 'static>),
+    ///
     DeserializationError(Box<dyn std::error::Error + Send + Sync + 'static>),
+    ///
     UnknownError(Box<dyn std::error::Error + Send + Sync + 'static>),
 }
 
@@ -75,7 +80,9 @@ impl From<SqliteAggregateError> for PersistenceError {
     fn from(err: SqliteAggregateError) -> Self {
         match err {
             SqliteAggregateError::OptimisticLock => PersistenceError::OptimisticLockError,
-            SqliteAggregateError::ConnectionError(error) => PersistenceError::ConnectionError(error),
+            SqliteAggregateError::ConnectionError(error) => {
+                PersistenceError::ConnectionError(error)
+            }
             SqliteAggregateError::DeserializationError(error) => {
                 PersistenceError::DeserializationError(error)
             }

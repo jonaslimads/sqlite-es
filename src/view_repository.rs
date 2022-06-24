@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use cqrs_es::persist::{PersistenceError, ViewContext, ViewRepository};
 use cqrs_es::{Aggregate, View};
 use sqlx::sqlite::SqliteRow;
-use sqlx::{Sqlite, Pool, Row};
+use sqlx::{Pool, Row, Sqlite};
 
 use crate::error::SqliteAggregateError;
 
@@ -13,7 +13,10 @@ pub struct SqliteViewRepository<V, A> {
     insert_sql: String,
     update_sql: String,
     select_sql: String,
-    pool: Pool<Sqlite>,
+    /// View name that may be used for custom queries
+    pub view_name: String,
+    /// Connection pool
+    pub pool: Pool<Sqlite>,
     _phantom: PhantomData<(V, A)>,
 }
 
@@ -42,14 +45,18 @@ where
             view_name
         );
         let update_sql = format!(
-            "UPDATE {} SET payload= ? , version= ? WHERE view_id= ?",
+            "UPDATE {} SET payload= ? , version= ? WHERE view_id = ?",
             view_name
         );
-        let select_sql = format!("SELECT version,payload FROM {} WHERE view_id= ?", view_name);
+        let select_sql = format!(
+            "SELECT version, payload FROM {} WHERE view_id = ?",
+            view_name
+        );
         Self {
             insert_sql,
             update_sql,
             select_sql,
+            view_name: view_name.to_string(),
             pool,
             _phantom: Default::default(),
         }
